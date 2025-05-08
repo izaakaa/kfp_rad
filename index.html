@@ -69,16 +69,20 @@
   <div class="result" id="radToTim"></div>
   <div class="result" id="timToRad"></div>
 
-  <label for="newTim">Ny Kfp/timme:</label>
-  <input type="number" id="newTim" step="0.1">
-  <label for="newRad">Ny Kfp/rad:</label>
-  <input type="number" id="newRad" step="0.01">
-  <button onclick="addDataPoint()">Lägg till datapunkt</button>
-  <button onclick="downloadCSV()">Ladda ner data som CSV</button>
-  <button onclick="clearUserData()">Rensa tillagd data</button>
-
   <div class="info-box" id="compensationBox"></div>
+  <table style="margin-top:2rem; width:100%; border-collapse: collapse;">
+    <thead>
+      <tr><th style="border-bottom:1px solid #ccc; text-align:left;">Kfp/rad</th><th style="border-bottom:1px solid #ccc; text-align:left;">Behövd ökning (%)</th><th style="border-bottom:1px solid #ccc; text-align:left;">Justerad Kfp/timme</th><th style="border-bottom:1px solid #ccc; text-align:left;">Kompensation (enheter)</th></tr>
+    </thead>
+    <tbody id="compTable"></tbody>
+  </table>
 
+  <table style="margin-top:2rem; width:100%; border-collapse: collapse;">
+    <thead>
+      <tr><th style="border-bottom:1px solid #ccc; text-align:left;">Kfp/rad</th><th style="border-bottom:1px solid #ccc; text-align:left;">Behövd minskning (%)</th><th style="border-bottom:1px solid #ccc; text-align:left;">Justerad Kfp/timme</th><th style="border-bottom:1px solid #ccc; text-align:left;">Besparing (enheter)</th></tr>
+    </thead>
+    <tbody id="benefitTable"></tbody>
+  </table>
   <canvas id="kfpChart" width="500" height="300"></canvas>
   <div id="pValueDisplay"></div>
 </div>
@@ -207,6 +211,32 @@
 
   function updateCompensation(rad, tim, slope, intercept) {
     const box = document.getElementById("compensationBox");
+    const table = document.getElementById("compTable");
+    const benefit = document.getElementById("benefitTable");
+    table.innerHTML = '';
+    benefit.innerHTML = '';
+
+    const targetRad = 5.8;
+    const baseTim = (targetRad - intercept) / slope;
+
+    for (let r = 5.8; r >= 5.4; r -= 0.1) {
+      const estTim = (r - intercept) / slope;
+      const needed = Math.abs((estTim - baseTim) / baseTim * 100);
+      const tr = document.createElement('tr');
+      const compensation = Math.abs(estTim - baseTim);
+      tr.innerHTML = `<td>${r.toFixed(1)}</td><td>${needed.toFixed(1)}%</td><td>${estTim.toFixed(1)}</td><td>${compensation.toFixed(1)}</td>`;
+      table.appendChild(tr);
+    }
+
+    for (let r = 6.2; r <= 6.6; r += 0.1) {
+      const estTim = (r - intercept) / slope;
+      const percentReduction = Math.abs((estTim - baseTim) / baseTim * 100);
+      const saving = Math.abs(estTim - baseTim);
+      const benefitTr = document.createElement('tr');
+      benefitTr.innerHTML = `<td>${r.toFixed(1)}</td><td>${percentReduction.toFixed(1)}%</td><td>${estTim.toFixed(1)}</td><td>${saving.toFixed(1)}</td>`;
+      benefit.appendChild(benefitTr);
+    }
+
     if (rad < 5.8) {
       const targetRad = 5.8;
       const targetTim = (targetRad - intercept) / slope;
@@ -220,18 +250,6 @@
       box.innerHTML = `
         <strong>Affärsmodell:</strong> Vi strävar efter en Kfp/rad mellan <strong>5.8 och 6.2</strong>.<br>
         Din nuvarande Kfp/rad ligger inom det godkända intervallet.`;
-    }
-  }
-
-  function addDataPoint() {
-    const newTim = parseFloat(document.getElementById('newTim').value);
-    const newRad = parseFloat(document.getElementById('newRad').value);
-    if (!isNaN(newTim) && !isNaN(newRad)) {
-      kfpTimData.push(newTim);
-      kfpRadData.push(newRad);
-      localStorage.setItem('kfpTimData', JSON.stringify(kfpTimData));
-      localStorage.setItem('kfpRadData', JSON.stringify(kfpRadData));
-      renderChart();
     }
   }
 
