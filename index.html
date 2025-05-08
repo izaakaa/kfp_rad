@@ -79,10 +79,10 @@
     <tbody id="compTable"></tbody>
   </table>
 
-  <h3>Besparing vid hög Kfp/rad (6.2–6.6)</h3>
+  <h3>Justering vid hög Kfp/rad (6.2–6.6)</h3>
   <table style="margin-top:0.5rem; width:100%; border-collapse: collapse;">
     <thead>
-      <tr><th style="border-bottom:1px solid #ccc; text-align:left;">Kfp/rad</th><th style="border-bottom:1px solid #ccc; text-align:left;">Behövd minskning (%)</th><th style="border-bottom:1px solid #ccc; text-align:left;">Justerad Kfp/timme</th><th style="border-bottom:1px solid #ccc; text-align:left;">Besparing (enheter)</th></tr>
+      <tr><th style="border-bottom:1px solid #ccc; text-align:left;">Kfp/rad</th><th style="border-bottom:1px solid #ccc; text-align:left;">Behövd minskning (%)</th><th style="border-bottom:1px solid #ccc; text-align:left;">Justerad Kfp/timme</th><th style="border-bottom:1px solid #ccc; text-align:left;">Justering (enheter)</th></tr>
     </thead>
     <tbody id="benefitTable"></tbody>
   </table>
@@ -224,21 +224,22 @@
       const targetRad = 5.8;
       const baseTim = (targetRad - intercept) / slope;
 
-      for (let r = 5.8; r >= 5.4; r -= 0.1) {
+      for (let r = 5.7; r >= 5.4; r -= 0.1) {
         const estTim = (r - intercept) / slope;
         const needed = Math.abs((estTim - baseTim) / baseTim * 100);
         const tr = document.createElement('tr');
-        const compensation = Math.abs(estTim - baseTim);
-        tr.innerHTML = `<td>${r.toFixed(1)}</td><td>${needed.toFixed(1)}%</td><td>${estTim.toFixed(1)}</td><td>${compensation.toFixed(1)}</td>`;
+        const compensation = (estTim - baseTim);
+        tr.innerHTML = `<td>${r.toFixed(1)}</td><td>${needed.toFixed(1)}%</td><td>${(baseTim + compensation).toFixed(1)}</td><td>${compensation.toFixed(1)}</td>`;
         table.appendChild(tr);
       }
 
-      for (let r = 6.2; r <= 6.6; r += 0.1) {
+      for (let r = 6.3; r <= 6.6; r += 0.1) {
         const estTim = (r - intercept) / slope;
-        const percentReduction = Math.abs((estTim - baseTim) / baseTim * 100);
-        const saving = Math.abs(estTim - baseTim);
+        const percentReduction = ((baseTim - estTim) / baseTim * 100);
+        const saving = (baseTim - estTim);
         const benefitTr = document.createElement('tr');
-        benefitTr.innerHTML = `<td>${r.toFixed(1)}</td><td>${percentReduction.toFixed(1)}%</td><td>${estTim.toFixed(1)}</td><td>${saving.toFixed(1)}</td>`;
+        const highlight = percentReduction > 10 ? ' style="background-color:#fce4ec;"' : '';
+        benefitTr.innerHTML = `<td${highlight}>${r.toFixed(1)}</td><td${highlight}>${percentReduction.toFixed(1)}%</td><td${highlight}>${estTim.toFixed(1)}</td><td${highlight}>${saving.toFixed(1)}</td>`;
         benefit.appendChild(benefitTr);
       }
 
