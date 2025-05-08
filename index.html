@@ -61,28 +61,32 @@
   <h2>Kfp-konverterare</h2>
 
   <label for="kfpRad">Kfp/rad:</label>
-  <input type="number" id="kfpRad" step="0.01" value="5.6" onchange="updateFromRad()">
+  <input type="number" id="kfpRad" step="0.01" value="5.6">
 
   <label for="kfpTim">Kfp/timme:</label>
-  <input type="number" id="kfpTim" step="0.1" value="334" onchange="updateFromTim()">
+  <input type="number" id="kfpTim" step="0.1" value="334">
 
   <div class="result" id="radToTim"></div>
   <div class="result" id="timToRad"></div>
 
   <div class="info-box" id="compensationBox"></div>
-  <table style="margin-top:2rem; width:100%; border-collapse: collapse;">
+
+  <h3>Kompensation vid låg Kfp/rad (5.4–5.8)</h3>
+  <table style="margin-top:0.5rem; width:100%; border-collapse: collapse;">
     <thead>
       <tr><th style="border-bottom:1px solid #ccc; text-align:left;">Kfp/rad</th><th style="border-bottom:1px solid #ccc; text-align:left;">Behövd ökning (%)</th><th style="border-bottom:1px solid #ccc; text-align:left;">Justerad Kfp/timme</th><th style="border-bottom:1px solid #ccc; text-align:left;">Kompensation (enheter)</th></tr>
     </thead>
     <tbody id="compTable"></tbody>
   </table>
 
-  <table style="margin-top:2rem; width:100%; border-collapse: collapse;">
+  <h3>Besparing vid hög Kfp/rad (6.2–6.6)</h3>
+  <table style="margin-top:0.5rem; width:100%; border-collapse: collapse;">
     <thead>
       <tr><th style="border-bottom:1px solid #ccc; text-align:left;">Kfp/rad</th><th style="border-bottom:1px solid #ccc; text-align:left;">Behövd minskning (%)</th><th style="border-bottom:1px solid #ccc; text-align:left;">Justerad Kfp/timme</th><th style="border-bottom:1px solid #ccc; text-align:left;">Besparing (enheter)</th></tr>
     </thead>
     <tbody id="benefitTable"></tbody>
   </table>
+
   <canvas id="kfpChart" width="500" height="300"></canvas>
   <div id="pValueDisplay"></div>
 </div>
@@ -90,196 +94,176 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js"></script>
 <script>
-  const defaultTim = [322.2, 317.1, 290.2, 287.0, 312.0, 304.7, 305.2, 329.7, 313.5, 312.6, 314.8, 312.3, 331.1, 311.6, 321.8];
-  const defaultRad = [5.8, 5.9, 5.2, 5.6, 5.6, 5.7, 5.7, 6.0, 5.8, 5.4, 5.7, 5.7, 5.9, 5.8, 5.6];
+  document.addEventListener("DOMContentLoaded", function () {
+    const defaultTim = [322.2, 317.1, 290.2, 287.0, 312.0, 304.7, 305.2, 329.7, 313.5, 312.6, 314.8, 312.3, 331.1, 311.6, 321.8];
+    const defaultRad = [5.8, 5.9, 5.2, 5.6, 5.6, 5.7, 5.7, 6.0, 5.8, 5.4, 5.7, 5.7, 5.9, 5.8, 5.6];
 
-  let kfpTimData = JSON.parse(localStorage.getItem('kfpTimData')) || [...defaultTim];
-  let kfpRadData = JSON.parse(localStorage.getItem('kfpRadData')) || [...defaultRad];
+    let kfpTimData = JSON.parse(localStorage.getItem('kfpTimData')) || [...defaultTim];
+    let kfpRadData = JSON.parse(localStorage.getItem('kfpRadData')) || [...defaultRad];
 
-  function linearRegression(x, y) {
-    const n = x.length;
-    const sumX = x.reduce((a, b) => a + b, 0);
-    const sumY = y.reduce((a, b) => a + b, 0);
-    const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
-    const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
-    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-    const intercept = (sumY - slope * sumX) / n;
+    function linearRegression(x, y) {
+      const n = x.length;
+      const sumX = x.reduce((a, b) => a + b, 0);
+      const sumY = y.reduce((a, b) => a + b, 0);
+      const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+      const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
+      const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+      const intercept = (sumY - slope * sumX) / n;
 
-    const yPred = x.map(xi => slope * xi + intercept);
-    const residuals = y.map((yi, i) => yi - yPred[i]);
-    const residualSumOfSquares = residuals.reduce((sum, r) => sum + r * r, 0);
-    const standardError = Math.sqrt(residualSumOfSquares / (n - 2));
-    const stdX = Math.sqrt(x.reduce((sum, xi) => sum + Math.pow(xi - sumX / n, 2), 0));
+      const yPred = x.map(xi => slope * xi + intercept);
+      const residuals = y.map((yi, i) => yi - yPred[i]);
+      const residualSumOfSquares = residuals.reduce((sum, r) => sum + r * r, 0);
+      const standardError = Math.sqrt(residualSumOfSquares / (n - 2));
+      const stdX = Math.sqrt(x.reduce((sum, xi) => sum + Math.pow(xi - sumX / n, 2), 0));
 
-    const tStat = slope / (standardError / stdX);
-    const df = n - 2;
-    const pValue = 2 * (1 - jStat.studentt.cdf(Math.abs(tStat), df));
+      const tStat = slope / (standardError / stdX);
+      const df = n - 2;
+      const pValue = 2 * (1 - jStat.studentt.cdf(Math.abs(tStat), df));
 
-    return { slope, intercept, pValue };
-  }
+      return { slope, intercept, pValue };
+    }
 
-  const chartElement = document.getElementById("kfpChart");
-  let chart;
+    const chartElement = document.getElementById("kfpChart");
+    let chart;
 
-  function renderChart() {
-    const { slope, intercept, pValue } = linearRegression(kfpTimData, kfpRadData);
-    const pText = `P-värde för regressionen: ${pValue.toFixed(4)}`;
-    const pDisplay = document.getElementById("pValueDisplay");
-    pDisplay.textContent = pText;
-    pDisplay.style.color = pValue < 0.05 ? 'green' : 'red';
+    function renderChart() {
+      const { slope, intercept, pValue } = linearRegression(kfpTimData, kfpRadData);
+      const pText = `P-värde för regressionen: ${pValue.toFixed(4)}`;
+      const pDisplay = document.getElementById("pValueDisplay");
+      pDisplay.textContent = pText;
+      pDisplay.style.color = pValue < 0.05 ? 'green' : 'red';
 
-    const minX = Math.min(...kfpTimData);
-    const maxX = Math.max(...kfpTimData);
-    const step = (maxX - minX) / 50;
-    const regressionX = Array.from({ length: 51 }, (_, i) => minX + i * step);
-    const regressionLine = regressionX.map(x => ({ x: x, y: slope * x + intercept }));
+      const minX = Math.min(...kfpTimData);
+      const maxX = Math.max(...kfpTimData);
+      const step = (maxX - minX) / 50;
+      const regressionX = Array.from({ length: 51 }, (_, i) => minX + i * step);
+      const regressionLine = regressionX.map(x => ({ x: x, y: slope * x + intercept }));
 
-    if (chart) chart.destroy();
-    chart = new Chart(chartElement, {
-      type: 'scatter',
-      data: {
-        datasets: [
-          {
-            label: 'Observerade värden',
-            data: kfpTimData.map((x, i) => ({ x: x, y: kfpRadData[i] })),
-            backgroundColor: 'orange'
-          },
-          {
-            label: 'Regressionslinje',
-            type: 'line',
-            data: regressionLine,
-            borderColor: 'blue',
-            fill: false,
-            tension: 0
-          },
-          {
-            label: 'Målintervall (5.8 - 6.2)',
-            type: 'line',
-            data: regressionX.map(x => ({ x: x, y: 5.8 })),
-            borderColor: 'rgba(0,200,0,0.2)',
-            backgroundColor: 'rgba(0,200,0,0.1)',
-            fill: '+1',
-            pointRadius: 0,
-            borderWidth: 0
-          },
-          {
-            type: 'line',
-            data: regressionX.map(x => ({ x: x, y: 6.2 })),
-            borderColor: 'rgba(0,200,0,0.2)',
-            backgroundColor: 'rgba(0,200,0,0.1)',
-            fill: false,
-            pointRadius: 0,
-            borderWidth: 0
-          }
-        ]
-      },
-      options: {
-        scales: {
-          x: {
-            title: {
-              display: true,
-              text: 'Kfp/tim tot'
-            }
-          },
-          y: {
-            title: {
-              display: true,
-              text: 'Kfp/rad'
+      if (chart) chart.destroy();
+      chart = new Chart(chartElement, {
+        type: 'scatter',
+        data: {
+          datasets: [
+            {
+              label: 'Observerade värden',
+              data: kfpTimData.map((x, i) => ({ x: x, y: kfpRadData[i] })),
+              backgroundColor: 'orange'
             },
-            min: 5.2,
-            max: 6.3
+            {
+              label: 'Regressionslinje',
+              type: 'line',
+              data: regressionLine,
+              borderColor: 'blue',
+              fill: false,
+              tension: 0
+            },
+            {
+              label: 'Målintervall (5.8 - 6.2)',
+              type: 'line',
+              data: regressionX.map(x => ({ x: x, y: 5.8 })),
+              borderColor: 'rgba(0,200,0,0.2)',
+              backgroundColor: 'rgba(0,200,0,0.1)',
+              fill: '+1',
+              pointRadius: 0,
+              borderWidth: 0
+            },
+            {
+              type: 'line',
+              data: regressionX.map(x => ({ x: x, y: 6.2 })),
+              borderColor: 'rgba(0,200,0,0.2)',
+              backgroundColor: 'rgba(0,200,0,0.1)',
+              fill: false,
+              pointRadius: 0,
+              borderWidth: 0
+            }
+          ]
+        },
+        options: {
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: 'Kfp/tim tot'
+              }
+            },
+            y: {
+              title: {
+                display: true,
+                text: 'Kfp/rad'
+              },
+              min: 5.2,
+              max: 6.3
+            }
           }
         }
-      }
-    });
-  }
-
-  function updateFromRad() {
-    const { slope, intercept } = linearRegression(kfpTimData, kfpRadData);
-    const rad = parseFloat(document.getElementById('kfpRad').value);
-    const tim = (rad - intercept) / slope;
-    document.getElementById('radToTim').textContent = `Kfp/rad = ${rad.toFixed(2)} → Kfp/timme ≈ ${tim.toFixed(1)}`;
-    updateCompensation(rad, tim, slope, intercept);
-  }
-
-  function updateFromTim() {
-    const { slope, intercept } = linearRegression(kfpTimData, kfpRadData);
-    const tim = parseFloat(document.getElementById('kfpTim').value);
-    const rad = slope * tim + intercept;
-    document.getElementById('timToRad').textContent = `Kfp/timme = ${tim.toFixed(1)} → Kfp/rad ≈ ${rad.toFixed(2)}`;
-  }
-
-  function updateCompensation(rad, tim, slope, intercept) {
-    const box = document.getElementById("compensationBox");
-    const table = document.getElementById("compTable");
-    const benefit = document.getElementById("benefitTable");
-    table.innerHTML = '';
-    benefit.innerHTML = '';
-
-    const targetRad = 5.8;
-    const baseTim = (targetRad - intercept) / slope;
-
-    for (let r = 5.8; r >= 5.4; r -= 0.1) {
-      const estTim = (r - intercept) / slope;
-      const needed = Math.abs((estTim - baseTim) / baseTim * 100);
-      const tr = document.createElement('tr');
-      const compensation = Math.abs(estTim - baseTim);
-      tr.innerHTML = `<td>${r.toFixed(1)}</td><td>${needed.toFixed(1)}%</td><td>${estTim.toFixed(1)}</td><td>${compensation.toFixed(1)}</td>`;
-      table.appendChild(tr);
+      });
     }
 
-    for (let r = 6.2; r <= 6.6; r += 0.1) {
-      const estTim = (r - intercept) / slope;
-      const percentReduction = Math.abs((estTim - baseTim) / baseTim * 100);
-      const saving = Math.abs(estTim - baseTim);
-      const benefitTr = document.createElement('tr');
-      benefitTr.innerHTML = `<td>${r.toFixed(1)}</td><td>${percentReduction.toFixed(1)}%</td><td>${estTim.toFixed(1)}</td><td>${saving.toFixed(1)}</td>`;
-      benefit.appendChild(benefitTr);
+    function updateFromRad() {
+      const { slope, intercept } = linearRegression(kfpTimData, kfpRadData);
+      const rad = parseFloat(document.getElementById('kfpRad').value);
+      const tim = (rad - intercept) / slope;
+      document.getElementById('radToTim').textContent = `Kfp/rad = ${rad.toFixed(2)} → Kfp/timme ≈ ${tim.toFixed(1)}`;
+      updateCompensation(rad, tim, slope, intercept);
     }
 
-    if (rad < 5.8) {
+    function updateFromTim() {
+      const { slope, intercept } = linearRegression(kfpTimData, kfpRadData);
+      const tim = parseFloat(document.getElementById('kfpTim').value);
+      const rad = slope * tim + intercept;
+      document.getElementById('timToRad').textContent = `Kfp/timme = ${tim.toFixed(1)} → Kfp/rad ≈ ${rad.toFixed(2)}`;
+    }
+
+    function updateCompensation(rad, tim, slope, intercept) {
+      const box = document.getElementById("compensationBox");
+      const table = document.getElementById("compTable");
+      const benefit = document.getElementById("benefitTable");
+      table.innerHTML = '';
+      benefit.innerHTML = '';
+
       const targetRad = 5.8;
-      const targetTim = (targetRad - intercept) / slope;
-      const delta = targetTim - tim;
-      box.innerHTML = `
-        <strong>Affärsmodell:</strong> Vi strävar efter en Kfp/rad mellan <strong>5.8 och 6.2</strong>.<br>
-        Din nuvarande Kfp/rad är <strong>${rad.toFixed(2)}</strong> vilket ligger under gränsen.<br>
-        För att kompensera bör Kfp/timme ökas med <strong>${delta.toFixed(1)}</strong> enheter, från <strong>${tim.toFixed(1)}</strong> till minst <strong>${targetTim.toFixed(1)}</strong>.
-      `;
-    } else {
-      box.innerHTML = `
-        <strong>Affärsmodell:</strong> Vi strävar efter en Kfp/rad mellan <strong>5.8 och 6.2</strong>.<br>
-        Din nuvarande Kfp/rad ligger inom det godkända intervallet.`;
-    }
-  }
+      const baseTim = (targetRad - intercept) / slope;
 
-  function clearUserData() {
-    kfpTimData = [...defaultTim];
-    kfpRadData = [...defaultRad];
-    localStorage.removeItem('kfpTimData');
-    localStorage.removeItem('kfpRadData');
+      for (let r = 5.8; r >= 5.4; r -= 0.1) {
+        const estTim = (r - intercept) / slope;
+        const needed = Math.abs((estTim - baseTim) / baseTim * 100);
+        const tr = document.createElement('tr');
+        const compensation = Math.abs(estTim - baseTim);
+        tr.innerHTML = `<td>${r.toFixed(1)}</td><td>${needed.toFixed(1)}%</td><td>${estTim.toFixed(1)}</td><td>${compensation.toFixed(1)}</td>`;
+        table.appendChild(tr);
+      }
+
+      for (let r = 6.2; r <= 6.6; r += 0.1) {
+        const estTim = (r - intercept) / slope;
+        const percentReduction = Math.abs((estTim - baseTim) / baseTim * 100);
+        const saving = Math.abs(estTim - baseTim);
+        const benefitTr = document.createElement('tr');
+        benefitTr.innerHTML = `<td>${r.toFixed(1)}</td><td>${percentReduction.toFixed(1)}%</td><td>${estTim.toFixed(1)}</td><td>${saving.toFixed(1)}</td>`;
+        benefit.appendChild(benefitTr);
+      }
+
+      if (rad < 5.8) {
+        const targetTim = (targetRad - intercept) / slope;
+        const delta = targetTim - tim;
+        box.innerHTML = `
+          <strong>Affärsmodell:</strong> Vi strävar efter en Kfp/rad mellan <strong>5.8 och 6.2</strong>.<br>
+          Din nuvarande Kfp/rad är <strong>${rad.toFixed(2)}</strong> vilket ligger under gränsen.<br>
+          För att kompensera bör Kfp/timme ökas med <strong>${delta.toFixed(1)}</strong> enheter, från <strong>${tim.toFixed(1)}</strong> till minst <strong>${targetTim.toFixed(1)}</strong>.
+        `;
+      } else {
+        box.innerHTML = `
+          <strong>Affärsmodell:</strong> Vi strävar efter en Kfp/rad mellan <strong>5.8 och 6.2</strong>.<br>
+          Din nuvarande Kfp/rad ligger inom det godkända intervallet.`;
+      }
+    }
+
+    document.getElementById('kfpRad').addEventListener('change', updateFromRad);
+    document.getElementById('kfpTim').addEventListener('change', updateFromTim);
+
     renderChart();
     updateFromRad();
     updateFromTim();
-  }
-
-  function downloadCSV() {
-    let csvContent = "data:text/csv;charset=utf-8,Kfp/tim tot,Kfp/rad\n";
-    for (let i = 0; i < kfpTimData.length; i++) {
-      csvContent += `${kfpTimData[i]},${kfpRadData[i]}\n`;
-    }
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "kfp_data.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
-
-  renderChart();
-  updateFromRad();
-  updateFromTim();
+  });
 </script>
 </body>
 </html>
