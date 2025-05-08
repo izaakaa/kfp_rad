@@ -1,4 +1,265 @@
 <!DOCTYPE html>
 <html lang="sv">
-<!-- ... hela HTML-koden från canvas ... -->
+<head>
+  <meta charset="UTF-8">
+  <title>Kfp-konverterare</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      background-color: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      border-radius: 10px;
+      max-width: 600px;
+      margin: auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    input, button {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    label {
+      font-weight: bold;
+    }
+    button {
+      background-color: #007acc;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .result {
+      margin-top: 1rem;
+      font-size: 1.1rem;
+      color: #333;
+    }
+    canvas {
+      margin-top: 2rem;
+    }
+    .info-box {
+      margin-top: 2rem;
+      padding: 1rem;
+      background-color: #e8f4f8;
+      border-left: 5px solid #0b93c9;
+      border-radius: 5px;
+    }
+    #pValueDisplay {
+      text-align: center;
+      font-size: 1rem;
+      color: #333;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>Kfp-konverterare</h2>
+
+  <label for="kfpRad">Kfp/rad:</label>
+  <input type="number" id="kfpRad" step="0.01" value="5.6" onchange="updateFromRad()">
+
+  <label for="kfpTim">Kfp/timme:</label>
+  <input type="number" id="kfpTim" step="0.1" value="334" onchange="updateFromTim()">
+
+  <div class="result" id="radToTim"></div>
+  <div class="result" id="timToRad"></div>
+
+  <label for="newTim">Ny Kfp/timme:</label>
+  <input type="number" id="newTim" step="0.1">
+  <label for="newRad">Ny Kfp/rad:</label>
+  <input type="number" id="newRad" step="0.01">
+  <button onclick="addDataPoint()">Lägg till datapunkt</button>
+  <button onclick="downloadCSV()">Ladda ner data som CSV</button>
+  <button onclick="clearUserData()">Rensa tillagd data</button>
+
+  <div class="info-box" id="compensationBox"></div>
+
+  <canvas id="kfpChart" width="500" height="300"></canvas>
+  <div id="pValueDisplay"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const defaultTim = [322.2, 317.1, 290.2, 287.0, 312.0, 304.7, 305.2, 329.7, 313.5, 312.6, 314.8, 312.3, 331.1, 311.6, 321.8];
+  const defaultRad = [5.8, 5.9, 5.2, 5.6, 5.6, 5.7, 5.7, 6.0, 5.8, 5.4, 5.7, 5.7, 5.9, 5.8, 5.6];
+
+  let kfpTimData = JSON.parse(localStorage.getItem('kfpTimData')) || [...defaultTim];
+  let kfpRadData = JSON.parse(localStorage.getItem('kfpRadData')) || [...defaultRad];
+
+  function linearRegression(x, y) {
+    const n = x.length;
+    const sumX = x.reduce((a, b) => a + b, 0);
+    const sumY = y.reduce((a, b) => a + b, 0);
+    const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+    const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+    const rNumerator = (n * sumXY - sumX * sumY);
+    const rDenominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * y.reduce((sum, yi) => sum + yi * yi, 0) - sumY * sumY));
+    const r = rNumerator / rDenominator;
+    const t = r * Math.sqrt((n - 2) / (1 - r * r));
+    const p = 2 * (1 - studentT(Math.abs(t), n - 2));
+    return { slope, intercept, pValue: p };
+  }
+
+  function studentT(t, v) {
+    const a = 1 / (1 + 0.2316419 * t);
+    const coeff = [0.319381530, -0.356563782, 1.781477937, -1.821255978, 1.330274429];
+    const poly = coeff.reduce((acc, c, i) => acc + c * Math.pow(a, i + 1), 0);
+    const approx = 1 - (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-t * t / 2) * poly;
+    return approx;
+  }
+
+  const chartElement = document.getElementById("kfpChart");
+  let chart;
+
+  function renderChart() {
+    const { slope, intercept, pValue } = linearRegression(kfpTimData, kfpRadData);
+    document.getElementById("pValueDisplay").textContent = `P-värde för regressionen: ${pValue.toFixed(4)}`;
+
+    const minX = Math.min(...kfpTimData);
+    const maxX = Math.max(...kfpTimData);
+    const step = (maxX - minX) / 50;
+    const regressionX = Array.from({ length: 51 }, (_, i) => minX + i * step);
+    const regressionLine = regressionX.map(x => ({ x: x, y: slope * x + intercept }));
+
+    if (chart) chart.destroy();
+    chart = new Chart(chartElement, {
+      type: 'scatter',
+      data: {
+        datasets: [
+          {
+            label: 'Observerade värden',
+            data: kfpTimData.map((x, i) => ({ x: x, y: kfpRadData[i] })),
+            backgroundColor: 'orange'
+          },
+          {
+            label: 'Regressionslinje',
+            type: 'line',
+            data: regressionLine,
+            borderColor: 'blue',
+            fill: false,
+            tension: 0
+          },
+          {
+            label: 'Målintervall (5.8 - 6.2)',
+            type: 'line',
+            data: regressionX.map(x => ({ x: x, y: 5.8 })),
+            borderColor: 'rgba(0,200,0,0.2)',
+            backgroundColor: 'rgba(0,200,0,0.1)',
+            fill: '+1',
+            pointRadius: 0,
+            borderWidth: 0
+          },
+          {
+            type: 'line',
+            data: regressionX.map(x => ({ x: x, y: 6.2 })),
+            borderColor: 'rgba(0,200,0,0.2)',
+            backgroundColor: 'rgba(0,200,0,0.1)',
+            fill: false,
+            pointRadius: 0,
+            borderWidth: 0
+          }
+        ]
+      },
+      options: {
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: 'Kfp/tim tot'
+            }
+          },
+          y: {
+            title: {
+              display: true,
+              text: 'Kfp/rad'
+            },
+            min: 5.2,
+            max: 6.3
+          }
+        }
+      }
+    });
+  }
+
+  function updateFromRad() {
+    const { slope, intercept } = linearRegression(kfpTimData, kfpRadData);
+    const rad = parseFloat(document.getElementById('kfpRad').value);
+    const tim = (rad - intercept) / slope;
+    document.getElementById('radToTim').textContent = `Kfp/rad = ${rad.toFixed(2)} → Kfp/timme ≈ ${tim.toFixed(1)}`;
+    updateCompensation(rad, tim, slope, intercept);
+  }
+
+  function updateFromTim() {
+    const { slope, intercept } = linearRegression(kfpTimData, kfpRadData);
+    const tim = parseFloat(document.getElementById('kfpTim').value);
+    const rad = slope * tim + intercept;
+    document.getElementById('timToRad').textContent = `Kfp/timme = ${tim.toFixed(1)} → Kfp/rad ≈ ${rad.toFixed(2)}`;
+  }
+
+  function updateCompensation(rad, tim, slope, intercept) {
+    const box = document.getElementById("compensationBox");
+    if (rad < 5.8) {
+      const targetRad = 5.8;
+      const targetTim = (targetRad - intercept) / slope;
+      const delta = targetTim - tim;
+      box.innerHTML = `
+        <strong>Affärsmodell:</strong> Vi strävar efter en Kfp/rad mellan <strong>5.8 och 6.2</strong>.<br>
+        Din nuvarande Kfp/rad är <strong>${rad.toFixed(2)}</strong> vilket ligger under gränsen.<br>
+        För att kompensera bör Kfp/timme ökas med <strong>${delta.toFixed(1)}</strong> enheter, från <strong>${tim.toFixed(1)}</strong> till minst <strong>${targetTim.toFixed(1)}</strong>.
+      `;
+    } else {
+      box.innerHTML = `
+        <strong>Affärsmodell:</strong> Vi strävar efter en Kfp/rad mellan <strong>5.8 och 6.2</strong>.<br>
+        Din nuvarande Kfp/rad ligger inom det godkända intervallet.`;
+    }
+  }
+
+  function addDataPoint() {
+    const newTim = parseFloat(document.getElementById('newTim').value);
+    const newRad = parseFloat(document.getElementById('newRad').value);
+    if (!isNaN(newTim) && !isNaN(newRad)) {
+      kfpTimData.push(newTim);
+      kfpRadData.push(newRad);
+      localStorage.setItem('kfpTimData', JSON.stringify(kfpTimData));
+      localStorage.setItem('kfpRadData', JSON.stringify(kfpRadData));
+      renderChart();
+    }
+  }
+
+  function clearUserData() {
+    kfpTimData = [...defaultTim];
+    kfpRadData = [...defaultRad];
+    localStorage.removeItem('kfpTimData');
+    localStorage.removeItem('kfpRadData');
+    renderChart();
+    updateFromRad();
+    updateFromTim();
+  }
+
+  function downloadCSV() {
+    let csvContent = "data:text/csv;charset=utf-8,Kfp/tim tot,Kfp/rad\n";
+    for (let i = 0; i < kfpTimData.length; i++) {
+      csvContent += `${kfpTimData[i]},${kfpRadData[i]}\n`;
+    }
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "kfp_data.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  renderChart();
+  updateFromRad();
+  updateFromTim();
+</script>
+</body>
 </html>
